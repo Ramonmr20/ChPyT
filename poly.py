@@ -242,7 +242,7 @@ class extExpr:
             raise ValueError("Tryint to add non extExpr")
         else:
             res = self + other
-            res._simplifyterms()
+            extExpr.simplifyterms(res)
 
             return res
 
@@ -252,7 +252,7 @@ class extExpr:
             raise ValueError("Tryint to add non extExpr")
         else:
             res = self * other
-            res._simplifyterms()
+            extExpr.simplifyterms(res)
 
             return res
 
@@ -318,7 +318,8 @@ class extExpr:
         other.terms = newotherterms
         other._set_keys(newkeys)
 
-    def _simplifyterms(self):
+    @staticmethod
+    def simplifyterms(self):
 
         # Sum equal terms
         terms_to_drop = []
@@ -342,7 +343,7 @@ class extExpr:
         # Delete 0s
         terms_to_drop = []
         for ii_term in range(len(self.terms)):
-            if term.coef==0:
+            if self.terms[ii_term].coef==0:
                 terms_to_drop.append(ii_term)
 
         newterms = np.array([],dtype=termExpr)
