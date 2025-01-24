@@ -224,6 +224,10 @@ class termExpr:
 
         string = string[:-3]
 
+        # Special case where term = 1
+        if string=="":
+            string = "1"
+
         return string
 
     def __repr__(self):
@@ -296,7 +300,7 @@ class extExpr:
         newkeys = copy.deepcopy(self.keys)
         for key in other.keys:
             if key not in newkeys:
-                newkeys.append(key)
+                newkeys = np.append(newkeys,key)
                 self._addemptytoterms()
 
         newotherterms = []
@@ -316,6 +320,7 @@ class extExpr:
 
     def _simplifyterms(self):
 
+        # Sum equal terms
         terms_to_drop = []
         for ii_term in range(len(self.terms)):
             if ii_term in terms_to_drop:
@@ -334,6 +339,22 @@ class extExpr:
 
         self.terms = newterms
 
+        # Delete 0s
+        terms_to_drop = []
+        for ii_term in range(len(self.terms)):
+            if term.coef==0:
+                terms_to_drop.append(ii_term)
+
+        newterms = np.array([],dtype=termExpr)
+        for ii_term in range(len(self.terms)):
+            if ii_term not in terms_to_drop:
+                newterms = np.append(newterms,self.terms[ii_term])
+
+        self.terms = newterms
+
+
+
+
     def __add__(self,other):
         if isinstance(other,extExpr):
 
@@ -346,8 +367,15 @@ class extExpr:
             newkeys = self.keys
 
             return extExpr(newterms,newkeys)
+        elif isinstance(other,NUMBER):
+            newother = Coef(other).term().expr()
+
+            return self + newother
         else:
             raise ValueError("Addition between extExpr and "+str(type(other))+" not implemented")
+
+    def __radd__(self,other):
+        return self + other
 
     def __mul__(self,other):
         if isinstance(other,extExpr):
@@ -361,7 +389,12 @@ class extExpr:
                     newterms = np.append(newterms,interm*jterm)
 
             return extExpr(newterms,self.keys)
+        if isinstance(other,NUMBER):
+            newother = Coef(other).term().expr()
 
-
+            return self*other
         else:
             raise ValueError("Addition between extExpr and "+str(type(other))+" not implemented")
+
+    def __rmul__(self,other):
+        return self*other
