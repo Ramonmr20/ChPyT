@@ -1,7 +1,7 @@
 import numpy as np
 import copy
 
-NUMBER=(int,float,np.int64)
+NUMBER=(int,float,np.int64,complex)
 
 ### Individual objects ###
 class Symbol:
@@ -429,7 +429,7 @@ class extExpr:
         elif isinstance(other,Coef):
             newother = other.term().expr()
 
-            return self*newother
+            return self + newother
         else:
             raise ValueError("Addition between extExpr and "+str(type(other))+" not implemented")
 
