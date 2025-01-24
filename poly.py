@@ -1,6 +1,7 @@
 import numpy as np
 import copy
 
+NUMBER=(int,float)
 
 ### Individual objects ###
 class Symbol:
@@ -32,32 +33,51 @@ class Symbol:
 
         return string
 
+    def __repr__(self):
+        return str(self)
+
     def __add__(self,other):
         if isinstance(other,Symbol):
             newself = self.term()
             newother = other.term()
 
             return newself + newother
-            # body = [[Coef(1),1,0],[Coef(1),0,1]]
-            # keys = [Coef.key,self.key,other.key]
-            # return extExpr(body,keys)
+        elif isinstance(other,NUMBER):
+            newself = self.term()
+            newother = Coef(other).term()
+
+            return newself + newother
         elif isinstance(other,extExpr):
             raise ValueError("not implemented yet, add symb expr")
         else:
             raise ValueError("Addition between Symbol and "+str(type(other))+" not supported")
+
+    def __radd__(self,other):
+
+        return self + other
 
     def __mul__(self,other):
         if isinstance(other,Symbol):
-            body = [[1,1]]
-            keys = [self.key,other.key]
-            return extExpr(body,keys)
+            newself = self.term()
+            newother = other.term()
+
+            return newself*newother
+        elif isinstance(other,NUMBER):
+            newself = self.term()
+            newother = Coef(other).term()
+
+            return newself*newother
         elif isinstance(other,extExpr):
             raise ValueError("not implemented yet, add symb expr")
         else:
-            raise ValueError("Addition between Symbol and "+str(type(other))+" not supported")
+            raise ValueError("Multiplication between Symbol and "+str(type(other))+" not supported")
+
+    def __rmul__(self,other):
+
+        return self * other
 
     def term(self):
-        return termExpr(Coef(1),[1],[self.key])
+        return termExpr(Coef(1),np.array([1]),[self.key])
 
 
 
@@ -87,6 +107,12 @@ class Coef(Symbol):
             return Coef(newvalue)
         else:
             raise ValueError("Trying to multiply a non Coef object to Coef")
+
+    def __str__(self):
+        return self.string
+
+    def term(self):
+        return termExpr(self,np.array([1]),[self.key])
 
 class Zero(Symbol):
 
@@ -121,7 +147,7 @@ class termExpr:
 
     def _sync(self,other):
         if not isinstance(other,termExpr):
-            raise ValueError("Trying to sync termExpr with a non termExpr object")
+            raise ValueError("Trying to sync termExpr with a non termExpr object "+str(type(other)))
         if self.keys==other.keys:
             return 0
 
@@ -132,7 +158,6 @@ class termExpr:
                 self.append()
 
         newotherbody = np.array([0]*len(newkeys))
-        print("newother",newotherbody)
         for ii_key in range(len(newkeys)):
             for ii_okey in range(len(other.keys)):
                 if newkeys[ii_key]==other.keys[ii_okey]:
@@ -151,8 +176,16 @@ class termExpr:
             newother = other.expr()
 
             return newself + newother
+        elif isinstance(other,NUMBER):
+            newself = self.expr()
+            newother = Coef(other).term().expr()
+
+            return newself+newother
         else:
-            raise ValueError("Trying to add termExpr with a non termExr object")
+            raise ValueError("Trying to add termExpr with a non termExr object "+str(type(other)))
+
+    def __radd__(self,other):
+        return self + other
 
     def __mul__(self,other):
         if isinstance(other,termExpr):
@@ -164,6 +197,37 @@ class termExpr:
             return termExpr(newcoef,newbody,self.keys)
         else:
             raise ValueError("Trying to multiply termExpr with a non termExr object")
+
+    def __rmul__(self,other):
+        return self * other
+
+    def __str__(self):
+        string = ""
+
+        if self.coef.isnumber and self.coef.value!=1:
+            string += str(self.coef)+"*"
+        for ii in range(len(self.body)):
+            if self.keys[ii]==Coef.key:
+                continue
+            elif self.body[ii]==1:
+                string += str(Symbol.get_obj(self.keys[ii])) + "*"
+            elif self.body[ii]==0:
+                continue
+            elif self.body[ii]>0:
+                string += str(Symbol.get_obj(self.keys[ii]))+ "^" + str(self.body[ii]) + "*"
+            else:
+                string += str(Symbol.get_obj(self.keys[ii]))+ "^(" + str(self.body[ii]) + ")*"
+
+        string = string[:-1]
+
+        string += " + "
+
+        string = string[:-3]
+
+        return string
+
+    def __repr__(self):
+        return str(self)
 
 
 class extExpr:
@@ -202,26 +266,16 @@ class extExpr:
     def __str__(self):
         string = ""
 
+        # TODO consider negative coefficients so that there is no +- something
         for term in self.terms:
-            if term.coef.isnumber and term.coef.value!=1:
-                string += str(term.coef)+"*"
-            for ii in range(len(term.body)):
-                if term.body[ii]==1:
-                    string += str(Symbol.get_obj(self.keys[ii])) + "*"
-                elif term.body[ii]==0:
-                    continue
-                elif term.body[ii]>0:
-                    string += str(Symbol.get_obj(self.keys[ii]))+ "^" + str(term.body[ii]) + "*"
-                else:
-                    string += str(Symbol.get_obj(self.keys[ii]))+ "^(" + str(term.body[ii]) + ")*"
-
-            string = string[:-1]
-
-            string += " + "
+            string += str(term) + " + "
 
         string = string[:-3]
 
         return string
+
+    def __repr__(self):
+        return str(self)
 
     def _addemptytoterms(self):
         for term in self.terms:
