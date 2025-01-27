@@ -56,6 +56,12 @@ class Symbol:
 
         return self + other
 
+    def __sub__(self,other):
+        return self + Coef(-1)*other
+
+    def __rsub__(self,other):
+        return Coef(-1)*self + other
+
     def __mul__(self,other):
         if isinstance(other,Symbol):
             newself = self.term()
@@ -69,15 +75,26 @@ class Symbol:
             return newself*newother
         elif isinstance(other,termExpr):
             newself = self.term()
-            return newself*newother
+            return newself*other
         elif isinstance(other,extExpr):
-            raise ValueError("not implemented yet, add symb expr")
+            newself = self.term().expr()
+            return newself + other
         else:
             raise ValueError("Multiplication between Symbol and "+str(type(other))+" not supported")
 
     def __rmul__(self,other):
 
         return self * other
+
+    def __eq__(self,other):
+
+        try:
+            if self.key==other.key:
+                return True
+            else:
+                return False
+        except:
+            return False
 
     def term(self):
         return termExpr(Coef(1),np.array([1]),[self.key])
@@ -114,6 +131,16 @@ class Coef(Symbol):
             return Coef(newvalue)
         elif isinstance(other,NUMBER):
             return Coef(self.value*other)
+        elif isinstance(other,Symbol):
+            newself = self.term()
+            newother = other.term()
+            return newself*newother
+        elif isinstance(other,termExpr):
+            newself = self.term()
+            return newself*other
+        elif isinstance(other,extExpr):
+            newself = self.term().expr()
+            return newself*other
         else:
             raise ValueError("Trying to multiply a non Coef object to Coef "+str(type(other)))
 
@@ -134,7 +161,7 @@ class Zero(Symbol):
             self.derivative = 0
             self.included = True
         else:
-            print("to implement")
+            raise ValueError("to implement")
 
 
 ### Expressions ###
@@ -190,11 +217,21 @@ class termExpr:
             newother = Coef(other).term().expr()
 
             return newself+newother
+        elif isinstance(other,extExpr):
+            newself = self.expr()
+
+            return newself + other
         else:
             raise ValueError("Trying to add termExpr with a non termExr object "+str(type(other)))
 
     def __radd__(self,other):
         return self + other
+
+    def __sub__(self,other):
+        return self + Coef(-1)*other
+
+    def __rsub__(self,other):
+        return Coef(-1)*self + other
 
     def __mul__(self,other):
         if isinstance(other,termExpr):
@@ -210,6 +247,14 @@ class termExpr:
         elif isinstance(other,Symbol):
             newother = other.term()
             return self*newother
+        elif isinstance(other,NUMBER):
+            newother = Coef(NUMBER).term()
+
+            return self*newother
+        elif isinstance(other,extExpr):
+            newself = self.expr()
+
+            return newself*other
         else:
             print(isinstance(other,Symbol))
             raise ValueError("Trying to multiply termExpr with a non termExr object "+str(type(other)))
@@ -413,21 +458,31 @@ class extExpr:
     def __add__(self,other):
         if isinstance(other,extExpr):
 
-            self._sync(other)
+            newself = copy.deepcopy(self)
+            newother = copy.deepcopy(other)
 
-            newterms = copy.deepcopy(self.terms)
-            for term in other.terms:
+            newself._sync(newother)
+
+            newterms = copy.deepcopy(newself.terms)
+            for term in newother.terms:
                 newterms = np.append(newterms,term)
 
-            newkeys = self.keys
+            newkeys = newself.keys
 
             return extExpr(newterms,newkeys)
+
         elif isinstance(other,NUMBER):
             newother = Coef(other).term().expr()
 
             return self + newother
+
         elif isinstance(other,Coef):
             newother = other.term().expr()
+
+            return self + newother
+
+        elif isinstance(other,termExpr):
+            newother = other.expr()
 
             return self + newother
         else:
@@ -439,31 +494,46 @@ class extExpr:
     def __mul__(self,other):
         if isinstance(other,extExpr):
 
-            self._sync(other)
+            newself = copy.deepcopy(self)
+            newother = copy.deepcopy(other)
+
+            newself._sync(newother)
 
             newterms = np.array([],dtype=termExpr)
 
-            for interm in self.terms:
-                for jterm in other.terms:
+            for interm in newself.terms:
+                for jterm in newother.terms:
                     newterms = np.append(newterms,interm*jterm)
 
-            return extExpr(newterms,self.keys)
-        if isinstance(other,NUMBER):
+            return extExpr(newterms,newself.keys)
+
+        elif isinstance(other,NUMBER):
             newother = Coef(other).term().expr()
 
-            return self*other
+            return self*newother
+        elif isinstance(other,Symbol):
+            newother = other.term().expr()
+
+            return self * newother
         else:
             raise ValueError("Addition between extExpr and "+str(type(other))+" not implemented")
 
     def __rmul__(self,other):
         return self*other
 
+    def __sub__(self,other):
+        return self + Coef(-1)*other
+
+    def __rsub__(self,other):
+        return Coef(-1)*self + other
 
     def partial(self,index,simplify=True):
 
+        newself = copy.deepcopy(self)
+
         newExpr = 0
 
-        for term in self.terms:
+        for term in newself.terms:
             newExpr += term.partial(index)
 
         if simplify:
