@@ -29,7 +29,7 @@ class ScalarField(poly.Symbol):
             obj = poly.Symbol.objtable[ii_entry][1]
             key = -1
             if isinstance(obj,ScalarField):
-                if obj.string==symbol and obj.point==point:
+                if obj.symbol==symbol and obj.point==point:
                     key = poly.Symbol.objtable[ii_entry][0]
                     break
 
@@ -187,9 +187,22 @@ class Diagram:#(poly.termExpr):
         elif len(corr)%2!=0:
             return poly.Coef(0)
         else:
+            skip_fields = []
             for ii in range(1,len(corr)):
-                diagram += Diagram.wick_contration([corr[0],corr[ii]])*Diagram.wick_contration(np.append(corr[1:ii],corr[ii+1:]))
+                if ii in skip_fields:
+                    continue
 
+                equal_fields = [ii]
+                for jj in range(ii+1,len(corr)):
+                    if corr[ii].key==corr[jj].key:
+                        equal_fields.append(jj)
+                        skip_fields.append(jj)
+
+                diagram += len(equal_fields)*Diagram.wick_contration([corr[0],corr[ii]])*Diagram.wick_contration(np.append(corr[1:ii],corr[ii+1:]))
+
+
+            if isinstance(diagram,diagExpr):
+                diagExpr.simplifyterms(diagram)
 
             return diagram
 
@@ -390,6 +403,7 @@ class diagExpr:
         for ii_term in range(1,len(self.terms)):
             poly.extExpr.simplifyterms(self.terms[ii_term].expr)
 
+        # Sum equal terms
         terms_to_drop = []
         for ii_term in range(len(self.terms)):
             if ii_term not in terms_to_drop:
@@ -406,6 +420,18 @@ class diagExpr:
             if ii_term not in terms_to_drop:
                 newExpr.terms = np.append(newExpr.terms,self.terms[ii_term])
 
+        self.terms = newExpr.terms
+
+        # Remove 0s
+        terms_to_drop = []
+        for ii_term in range(len(self.terms)):
+            if str(self.terms[ii_term].expr)=="0":
+                terms_to_drop.append(ii_term)
+
+        newExpr = diagExpr([])
+        for ii_term in range(len(self.terms)):
+            if ii_term not in terms_to_drop:
+                newExpr.terms = np.append(newExpr.terms,self.terms[ii_term])
 
         self.terms = newExpr.terms
 
