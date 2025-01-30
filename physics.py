@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import poly
+import numpy as np
+import copy
 
 class ScalarField(poly.Symbol):
 
@@ -9,12 +11,17 @@ class ScalarField(poly.Symbol):
         a.antiparticle = b.key
         b.antiparticle = a.key
 
-    def __init__(self,symbol,point):
-        self.key = self._insert_obj(symbol,point)
-        self.string = symbol
+    def __init__(self,symbol,point,key=None):
+        if not key:
+            self.key = self._insert_obj(symbol,point)
+        else:
+            self.key = key
+
+        self.string = symbol+"("+str(point)+")"
         self.derivative = 0
-        self.antiparticle = None
+        self.antiparticle = self.key
         self.point = point
+        self.symbol = symbol
 
     def _insert_obj(self,symbol,point):
 
@@ -31,9 +38,25 @@ class ScalarField(poly.Symbol):
 
         return key
 
+    def get_antiparticle(self):
+
+        if self.antiparticle==self.key:
+            return copy.deepcopy(self)
+
+        newfield = ScalarField(poly.Symbol.get_obj(self.antiparticle).symbol,self.point,key=self.antiparticle)
+        newfield.antiparticle = self.key
+        newfield.derivative = self.derivative
+
+        return newfield
 
     def partial(self,index):
         return FieldDerivative(self,index)
+
+    def change_point(self,newpoint):
+        newField = ScalarField(self.symbol,newpoint)
+        newField.antiparticle = self.antiparticle
+
+        return newField
 
 class LorentzIndex1(poly.Symbol):
 
@@ -48,11 +71,12 @@ class FieldDerivative(LorentzIndex1):
 
     def __init__(self,field,index):
         self.key = self._insert_obj(field,index)
-        self.string = u"\u2202_" + str(index) + "(" + field.string + ")"
+        self.string = u"\u2202_" + str(index) + "(" + str(field) + ")"
         self.derivative = 1
         self.antiparticle = field.antiparticle
         self.index = index
         self.parent = field.key
+        self.point = field.point
 
     def _insert_obj(self,field,index):
 
@@ -60,8 +84,6 @@ class FieldDerivative(LorentzIndex1):
             obj = poly.Symbol.objtable[ii_entry][1]
             key = -1
             if isinstance(obj,FieldDerivative):
-                print(obj.parent,field.key,obj.parent==field.key)
-                print(obj.index,index,obj.index==index)
                 if obj.parent==field.key and obj.index==index:
                     key = poly.Symbol.objtable[ii_entry][0]
                     break
@@ -70,3 +92,336 @@ class FieldDerivative(LorentzIndex1):
             key = poly.Symbol._insert_obj(self)
 
         return key
+
+    def change_point(self,point):
+        return FieldDerivative(poly.Symbol.get_obj(self.parent).change_point(point),self.index)
+
+    def get_antiparticle(self):
+        newfieldderivative = FieldDerivative(poly.Symbol.get_obj(self.parent).get_antiparticle(),self.index)
+
+        return newfieldderivative
+
+
+class Propagator(poly.Symbol):
+
+    def __init__(self,field,pointa,pointb):
+        self.key = self._insert_obj(field,pointa,pointb)
+        self.field = field
+        self.pointa = pointa
+        self.pointb = pointb
+        self.string = "D_"+str(field.symbol)+"("+str(pointa)+"-"+str(pointb)+")"
+
+    def _insert_obj(self,field,pointa,pointb):
+
+        for ii_entry in range(len(poly.Symbol.objtable)):
+            obj = poly.Symbol.objtable[ii_entry][1]
+            key = -1
+            if isinstance(obj,Propagator):
+                if obj.field==field and obj.pointa==pointa and obj.pointb==pointb:
+                    key = poly.Symbol.objtable[ii_entry][0]
+                    break
+
+        if key==-1:
+            key = poly.Symbol._insert_obj(self)
+
+        return key
+
+class Diagram:#(poly.termExpr):
+
+    def _divide_factor_corr(term,point=None):
+
+        factor = copy.deepcopy(term)
+        corr = np.array([])
+
+        for ii_body in range(len(term.body)):
+            obj_key = term.keys[ii_body]
+            if obj_key != poly.Coef.key:
+                obj = poly.Symbol.get_obj(obj_key)
+
+                if isinstance(obj,ScalarField) or isinstance(obj,FieldDerivative):
+                    factor.body[ii_body] = 0
+
+                    if point:
+                        for ii in range(term.body[ii_body]):
+                            corr = np.append(corr,obj.change_point(point))
+                    else:
+                        for ii in range(term.body[ii_body]):
+                            corr = np.append(corr,obj)
+
+        return factor, corr
+
+
+    @staticmethod
+    def wick_contration(corr):
+
+        diagram = Diagram(poly.Coef(1).term().expr(),poly.Coef(1).term().expr())
+
+        if len(corr)==2:
+            if isinstance(corr[0],ScalarField) and isinstance(corr[1],ScalarField):
+                if corr[0].symbol==corr[1].get_antiparticle().symbol:
+                    diagram.propagators *= Propagator(corr[0],corr[0].point,corr[1].point)
+                    return diagram
+                else:
+                    return poly.Coef(0)
+            elif isinstance(corr[0],ScalarField) and isinstance(corr[1],FieldDerivative):
+                if corr[0].symbol==poly.Symbol.get_obj(corr[1].parent).get_antiparticle().symbol:
+                    diagram.propagators *= Propagator(corr[0],corr[0].point,corr[1].point)
+                    return diagram
+                else:
+                    return poly.Coef(0)
+            elif isinstance(corr[0],FieldDerivative) and isinstance(corr[1],ScalarField):
+                if poly.Symbol.get_obj(corr[0].parent).symbol==corr[1].get_antiparticle().key:
+                    diagram.propagators *= Propagator(corr[1],corr[0].point,corr[1].point)
+                    return diagram
+                else:
+                    return poly.Coef(0)
+            elif isinstance(corr[0],FieldDerivative) and isinstance(corr[1],FieldDerivative):
+                if poly.Symbol.get_obj(corr[0].parent).symbol==poly.Symbol.get_obj(corr[0].parent).get_antiparticle().symbol:
+                    diagram.propagators *= Propagator(poly.Symbol.getobj(corr[0].parent),corr[0].point,corr[1].point)
+                    return diagram
+                else:
+                    return poly.Coef(0)
+            else:
+                raise ValueError("Unsupported object in wick contraction "+str(type(corr[0]))+str(type(corr[1])))
+
+        elif len(corr)%2!=0:
+            return poly.Coef(0)
+        else:
+            for ii in range(1,len(corr)):
+                diagram += Diagram.wick_contration([corr[0],corr[ii]])*Diagram.wick_contration(np.append(corr[1:ii],corr[ii+1:]))
+
+
+            return diagram
+
+    def generate(corr,operatorlist):
+
+        if isinstance(corr,poly.extExpr):
+            if len(corr.terms)==1:
+                corrterm = corr.terms[0]
+            else:
+                raise ValueError("Correlation function is an expression with more than 1 term")
+        elif isinstance(corr,poly.termExpr):
+            corrterm = corr
+        else:
+            raise ValueError("Correlation function is of unsupported type "+str(type(corr)))
+
+        prefactor = 1
+        fields = np.array([])
+
+        newfactor, newfields = Diagram._divide_factor_corr(corrterm)
+
+        prefactor *= newfactor
+        fields = np.append(fields,newfields)
+
+        if isinstance(operatorlist,poly.termExpr):
+            operatorlist = [operatorlist]
+
+        int_point = 1
+        for operator in operatorlist:
+            internal_point = poly.Symbol("int"+str(int_point))
+
+            if isinstance(operator,poly.extExpr):
+                if len(operator.terms)==1:
+                    operatorterm = operator.terms[0]
+                else:
+                    raise ValueError("Operator is an expression with more than 1 term\n"+str(operator))
+            elif isinstance(operator,poly.termExpr):
+                operatorterm = operator
+            else:
+                raise ValueError("Operator is of unsupported type "+str(type(corr))+"\n"+str(operator))
+
+            newfactor, newfields = Diagram._divide_factor_corr(operatorterm,internal_point)
+
+            prefactor *= newfactor
+            fields = np.append(fields,newfields)
+
+            int_point += 1
+
+        print(Diagram.wick_contration(fields))
+
+    def __init__(self,expr,propagators):
+        self.expr = expr
+        self.propagators = propagators
+        self.string = str(propagators)
+
+    def __mul__(self,other):
+        newdiagram = copy.deepcopy(self)
+
+        if isinstance(other,poly.Coef) and other.value==0:
+            return poly.Coef(0)
+        elif isinstance(other,poly.Coef):
+            newdiagram.expr *= other
+
+            return newdiagram
+        elif isinstance(other,poly.NUMBER):
+            newdiagram.expr *= poly.Coef(other)
+
+            return newdiagram
+        elif isinstance(other,diagExpr):
+            return diagExpr([copy.deepcopy(self)])*other
+        elif isinstance(other,Diagram):
+            newdiagram.expr *= other.expr
+            newdiagram.propagators *= other.propagators
+
+            return newdiagram
+        else:
+            if isinstance(other,poly.extExpr):
+                newdiagram.expr *= other
+
+                return newdiagram
+            else:
+                try:
+                    return other.__rmul__(self)
+                except:
+                    raise ValueError("Unsupported multiplication for diagram and "+str(type(other)))
+
+    def __rmul__(self,other):
+        return self*other
+
+    def __add__(self,other):
+        if isinstance(other,Diagram):
+            return diagExpr([copy.deepcopy(self),copy.deepcopy(other)])
+        elif isinstance(other,diagExpr):
+            return diagExpr([copy.deepcopy(self)])+other
+
+        elif isinstance(other,poly.Coef) and other.value==0:
+            return copy.deepcopy(self)
+        else:
+            raise ValueError("Error adding Diagram to type",type(other))
+
+    def __radd__(self,other):
+        return self+other
+
+    def __str__(self):
+
+        string = ""
+
+        if str(self.expr)!="1":
+            string += "[" + str(self.expr) + "]"
+
+        if str(self.propagators)!="1":
+            string += str(self.propagators)
+        else:
+            string = "0"
+
+        return string
+
+    def __repr__(self):
+        return str(self)
+
+class diagExpr:
+
+    def __init__(self,terms):
+        self.terms = terms
+
+    def __mul__(self,other):
+        if isinstance(other,poly.Coef):
+            if other.value==0:
+                return poly.Coef(0)
+            else:
+                newself = copy.deepcopy(self)
+                for ii_term in newself.terms:
+                    newself.terms[ii_term].expr *= other
+
+                return newself
+
+        elif isinstance(other,diagExpr):
+            newexpr = diagExpr([])
+
+            for iiterm in self.terms:
+                for jjterm in other.terms:
+                    newexpr.terms = np.append(newexpr.terms,iiterm*jjterm)
+
+                    diagExpr.simplifyterms(newexpr)
+
+            return newexpr
+        else:
+            raise ValueError("multiplication not implemented for diagExpr and "+str(type(other)))
+
+    def __add__(self,other):
+        if isinstance(other,Diagram):
+            return copy.deepcopy(self) + diagExpr([copy.deepcopy(other)])
+        elif isinstance(other,poly.Coef):
+            if other.value==0:
+                return copy.deepcopy(self)
+            else:
+                raise ValueError("Addition between diagExpr and non zero number")
+        elif not isinstance(other,diagExpr):
+            try:
+                return other+self
+            except:
+                raise ValueError("Addition between diagExpr and ",type(other))
+
+        newself = copy.deepcopy(self)
+        newself.terms = np.append(newself.terms,other.terms)
+
+        diagExpr.simplifyterms(newself)
+
+        return newself
+
+    def __radd__(self,other):
+        return self+other
+
+    @staticmethod
+    def simplifyterms(self):
+
+        # Clean empty propagators
+        terms_to_drop = []
+        for ii_term in range(len(self.terms)):
+            if str(self.terms[ii_term].propagators)=="1":
+                terms_to_drop.append(ii_term)
+
+        newExpr = diagExpr([])
+        for ii_term in range(len(self.terms)):
+            if ii_term not in terms_to_drop:
+                newExpr.terms = np.append(newExpr.terms,self.terms[ii_term])
+
+        self.terms = newExpr.terms
+
+        # Sync terms
+        for ii_term in range(1,len(self.terms)):
+            self.terms[0].expr._sync(self.terms[ii_term].expr)
+            self.terms[0].propagators._sync(self.terms[ii_term].propagators)
+
+        for ii_term in range(1,len(self.terms)):
+            self.terms[0].expr._sync(self.terms[ii_term].expr)
+            self.terms[0].propagators._sync(self.terms[ii_term].propagators)
+
+        for ii_term in range(1,len(self.terms)):
+            poly.extExpr.simplifyterms(self.terms[ii_term].expr)
+
+        terms_to_drop = []
+        for ii_term in range(len(self.terms)):
+            if ii_term not in terms_to_drop:
+                for jj_term in range(ii_term+1,len(self.terms)):
+                    if jj_term not in terms_to_drop:
+                        iibody_nocoef = np.append(self.terms[ii_term].propagators.terms[0].body[:self.terms[ii_term].propagators.terms[0].keydict[str(poly.Coef.key)]],self.terms[ii_term].propagators.terms[0].body[self.terms[ii_term].propagators.terms[0].keydict[str(poly.Coef.key)]+1:])
+                        jjbody_nocoef = np.append(self.terms[jj_term].propagators.terms[0].body[:self.terms[jj_term].propagators.terms[0].keydict[str(poly.Coef.key)]],self.terms[jj_term].propagators.terms[0].body[self.terms[jj_term].propagators.terms[0].keydict[str(poly.Coef.key)]+1:])
+                        if np.array_equal(iibody_nocoef,jjbody_nocoef):
+                            terms_to_drop.append(jj_term)
+                            self.terms[ii_term].expr += self.terms[jj_term].expr
+
+        newExpr = diagExpr([])
+        for ii_term in range(len(self.terms)):
+            if ii_term not in terms_to_drop:
+                newExpr.terms = np.append(newExpr.terms,self.terms[ii_term])
+
+
+        self.terms = newExpr.terms
+
+
+    def __str__(self):
+
+        if len(self.terms)==0:
+            return "0"
+
+        string = ""
+        for term in self.terms:
+           string += str(term) + " + "
+
+        string = string[:-3]
+
+        return string
+
+    def __repr__(self):
+        return str(self)

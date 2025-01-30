@@ -47,8 +47,14 @@ class Symbol:
             newother = Coef(other).term()
 
             return newself + newother
+        elif isinstance(other,termExpr):
+            newself = self.term()
+
+            return newself + other
         elif isinstance(other,extExpr):
-            raise ValueError("not implemented yet, add symb expr")
+            newself = self.term().expr()
+
+            return newself + other
         else:
             raise ValueError("Addition between Symbol and "+str(type(other))+" not supported")
 
@@ -69,6 +75,8 @@ class Symbol:
 
             return newself*newother
         elif isinstance(other,NUMBER):
+            if other==0:
+                return Coef(0).term()
             newself = self.term()
             newother = Coef(other).term()
 
@@ -78,13 +86,17 @@ class Symbol:
             return newself*other
         elif isinstance(other,extExpr):
             newself = self.term().expr()
-            return newself + other
+            return newself * other
         else:
             raise ValueError("Multiplication between Symbol and "+str(type(other))+" not supported")
 
     def __rmul__(self,other):
 
         return self * other
+
+    def __pow__(self,other):
+        return termExpr(Coef(1),np.array([other]),[self.key])
+
 
     def __eq__(self,other):
 
@@ -120,9 +132,12 @@ class Coef(Symbol):
 
             return Coef(newvalue)
         elif isinstance(other,NUMBER):
-            return Coef(self.value+newother)
+            return Coef(self.value+other)
         else:
-            raise ValueError("Trying to add a non Coef object to Coef")
+            try:
+                return other.__radd__(self)
+            except:
+                raise ValueError("Trying to add a non Coef object to Coef",type(other))
 
     def __mul__(self,other):
         if isinstance(other,Coef):
@@ -142,7 +157,10 @@ class Coef(Symbol):
             newself = self.term().expr()
             return newself*other
         else:
-            raise ValueError("Trying to multiply a non Coef object to Coef "+str(type(other)))
+            try:
+                return other*self
+            except:
+                raise ValueError("Trying to multiply a non Coef object to Coef "+str(type(other)))
 
     def __str__(self):
         return self.string
@@ -171,6 +189,7 @@ class termExpr:
         self.coef = coef
         self.body = body
         self.keys = keys
+        self.keydict = self._genkeydict()
 
     def append(self,value=0):
         self.body = np.append(self.body,value)
@@ -181,9 +200,21 @@ class termExpr:
     def expr(self):
         return extExpr(np.array([copy.deepcopy(self)]),self.keys)
 
+    def _genkeydict(self):
+
+        newdict = {}
+
+        for ii_key in range(len(self.keys)):
+            newdict[str(self.keys[ii_key])] = ii_key
+
+        return newdict
+
     def _sync(self,other):
         if not isinstance(other,termExpr):
-            raise ValueError("Trying to sync termExpr with a non termExpr object "+str(type(other)))
+            try:
+                other = other.term()
+            except:
+                raise ValueError("Trying to sync termExpr with a non termExpr object "+str(type(other)))
         if list(self.keys)==list(other.keys):
             return 0
 
@@ -200,7 +231,9 @@ class termExpr:
                     newotherbody[ii_key] = other.body[ii_okey]
 
         self.keys = newkeys
+        self.keydict = self._genkeydict()
         other.keys = newkeys
+        other.keydict = other._genkeydict()
         other.body = newotherbody
 
     def _set_keys(self,keys):
@@ -235,12 +268,15 @@ class termExpr:
 
     def __mul__(self,other):
         if isinstance(other,termExpr):
-            self._sync(other)
+            newself = copy.deepcopy(self)
+            newother = copy.deepcopy(other)
 
-            newbody = self.body+other.body
-            newcoef = self.coef*other.coef
+            newself._sync(newother)
 
-            return termExpr(newcoef,newbody,self.keys)
+            newbody = newself.body+newother.body
+            newcoef = newself.coef*newother.coef
+
+            return termExpr(newcoef,newbody,newself.keys)
         elif isinstance(other,Coef):
             newother = other.term()
             return self*newother
@@ -248,13 +284,15 @@ class termExpr:
             newother = other.term()
             return self*newother
         elif isinstance(other,NUMBER):
-            newother = Coef(NUMBER).term()
+            newother = Coef(other).term()
 
             return self*newother
         elif isinstance(other,extExpr):
             newself = self.expr()
 
             return newself*other
+        elif isinstance(other,np.ndarray):
+            return np.multiply(self,other)
         else:
             print(isinstance(other,Symbol))
             raise ValueError("Trying to multiply termExpr with a non termExr object "+str(type(other)))
@@ -350,16 +388,27 @@ class extExpr:
 
             return res
 
+    def _genkeydict(self):
+
+        newdict = {}
+
+        for ii_key in range(len(self.keys)):
+            newdict[str(self.keys[ii_key])] = ii_key
+
+        return newdict
+
 
     def __init__(self,terms=[],keys=[]):
         if len(terms)==0:
             self.terms = np.array([termExpr(Coef(0),[1],[Coef.key])],dtype=termExpr)
             self.keys = self.terms[0].keys
+            self.keydict = self._genkeydict()
         elif len(terms[0].body)!=len(keys):
             raise ValueError("len terms != len keys")
         else:
             self.terms = terms
             self.keys = keys
+            self.keydict = self._genkeydict()
 
     def __str__(self):
         string = ""
@@ -381,15 +430,23 @@ class extExpr:
 
     def _set_keys(self,keys):
         self.keys = keys
-        self._update_termskeys(keys)
+        self.keydict = self._genkeydict()
+        self._update_termskeys(keys,self.keydict)
 
-    def _update_termskeys(self,keys):
+    def _update_termskeys(self,keys,keydict):
         for term in self.terms:
             term._set_keys(keys)
+            term.keydict = keydict
 
     def _sync(self,other):
         if not isinstance(other,extExpr):
-            raise ValueError("Trying to sync expr with a non expr type")
+            try:
+                other = other.expr()
+            except:
+                try:
+                    other = other.term().expr()
+                except:
+                    raise ValueError("Trying to sync expr with a non expr type")
 
         newkeys = copy.deepcopy(self.keys)
         for key in other.keys:
@@ -423,7 +480,9 @@ class extExpr:
             for jj_term in range(ii_term+1,len(self.terms)):
                 if jj_term in terms_to_drop:
                     continue
-                if np.array_equal(self.terms[ii_term].body,self.terms[jj_term].body):
+                iibody_nocoef = np.append(self.terms[ii_term].body[:self.keydict[str(Coef.key)]],self.terms[ii_term].body[self.keydict[str(Coef.key)]+1:])
+                jjbody_nocoef = np.append(self.terms[jj_term].body[:self.keydict[str(Coef.key)]],self.terms[jj_term].body[self.keydict[str(Coef.key)]+1:])
+                if np.array_equal(iibody_nocoef,jjbody_nocoef):
                     self.terms[ii_term].coef += self.terms[jj_term].coef
                     terms_to_drop.append(jj_term)
 
@@ -469,7 +528,10 @@ class extExpr:
 
             newkeys = newself.keys
 
-            return extExpr(newterms,newkeys)
+            newexpr = extExpr(newterms,newkeys)
+            extExpr.simplifyterms(newexpr)
+
+            return newexpr
 
         elif isinstance(other,NUMBER):
             newother = Coef(other).term().expr()
@@ -505,9 +567,15 @@ class extExpr:
                 for jterm in newother.terms:
                     newterms = np.append(newterms,interm*jterm)
 
-            return extExpr(newterms,newself.keys)
+            newexpr = extExpr(newterms,newself.keys)
+            extExpr.simplifyterms(newexpr)
+
+            return newexpr
 
         elif isinstance(other,NUMBER):
+            if other==0:
+                return Coef(0).term().expr()
+
             newother = Coef(other).term().expr()
 
             return self*newother
@@ -515,8 +583,12 @@ class extExpr:
             newother = other.term().expr()
 
             return self * newother
+        elif isinstance(other,termExpr):
+            newother = other.expr()
+
+            return self*newother
         else:
-            raise ValueError("Addition between extExpr and "+str(type(other))+" not implemented")
+            raise ValueError("Multiplication between extExpr and "+str(type(other))+" not implemented")
 
     def __rmul__(self,other):
         return self*other
@@ -531,7 +603,7 @@ class extExpr:
 
         newself = copy.deepcopy(self)
 
-        newExpr = 0
+        newExpr = Coef(0).term().expr()
 
         for term in newself.terms:
             newExpr += term.partial(index)
