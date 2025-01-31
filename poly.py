@@ -480,8 +480,12 @@ class extExpr:
             for jj_term in range(ii_term+1,len(self.terms)):
                 if jj_term in terms_to_drop:
                     continue
-                iibody_nocoef = np.append(self.terms[ii_term].body[:self.keydict[str(Coef.key)]],self.terms[ii_term].body[self.keydict[str(Coef.key)]+1:])
-                jjbody_nocoef = np.append(self.terms[jj_term].body[:self.keydict[str(Coef.key)]],self.terms[jj_term].body[self.keydict[str(Coef.key)]+1:])
+                if Coef.key in self.keydict:
+                    iibody_nocoef = np.append(self.terms[ii_term].body[:self.keydict[str(Coef.key)]],self.terms[ii_term].body[self.keydict[str(Coef.key)]+1:])
+                    jjbody_nocoef = np.append(self.terms[jj_term].body[:self.keydict[str(Coef.key)]],self.terms[jj_term].body[self.keydict[str(Coef.key)]+1:])
+                else:
+                    iibody_nocoef = self.terms[ii_term].body
+                    jjbody_nocoef = self.terms[jj_term].body
                 if np.array_equal(iibody_nocoef,jjbody_nocoef):
                     self.terms[ii_term].coef += self.terms[jj_term].coef
                     terms_to_drop.append(jj_term)

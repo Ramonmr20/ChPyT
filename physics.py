@@ -152,6 +152,86 @@ class Diagram:#(poly.termExpr):
 
 
     @staticmethod
+    def check_disconnected(diagram):
+
+        propagators_list = []
+
+        for ii in range(len(diagram.propagators.terms[0].body)):
+            obj = poly.Symbol.get_obj(diagram.propagators.terms[0].keys[ii])
+            if isinstance(obj,Propagator) and diagram.propagators.terms[0].body[ii]!=0:
+                propagators_list.append(obj)
+
+        line_propagators = [propagators_list[0]]
+        line_points = [propagators_list[0].pointa,propagators_list[0].pointb]
+
+        searchfinished = False
+        while not searchfinished:
+            searchfinished = True
+            for ii in range(1,len(propagators_list)):
+                if propagators_list[ii] in line_propagators:
+                    continue
+
+                if propagators_list[ii].pointa in line_points or propagators_list[ii].pointb in line_points:
+                    searchfinished = False
+                    line_propagators.append(propagators_list[ii])
+
+                    if propagators_list[ii].pointa not in line_points:
+                        line_points.append(propagators_list[ii].pointa)
+
+                    if propagators_list[ii].pointb not in line_points:
+                        line_points.append(propagators_list[ii].pointb)
+
+        return len(propagators_list)==len(line_propagators)
+
+    @staticmethod
+    def gen_adjacency(diagram,external_points,internal_points):
+
+        propagators = diagram.propagators.terms[0]
+
+        external_points_pos = {}
+        for ii in range(len(external_points)):
+            external_points_pos[str(external_points[ii])] = ii
+
+        internal_points_pos = {}
+        for ii in range(len(internal_points)):
+            internal_points_pos[str(internal_points[ii])] = ii
+
+        # Conected interacting diagrams will only have information in internal points rows
+        adjacency = np.zeros((len(internal_points),len(external_points)+len(internal_points)),dtype=int)
+
+        for ii in range(len(propagators.body)):
+            if propagators.keys[ii]==poly.Coef.key:
+                continue
+
+            obj = poly.Symbol.get_obj(propagators.keys[ii])
+            print(obj)
+            if not isinstance(obj,Propagator) or propagators.body[ii]==0:
+                continue
+
+            if obj.pointa in internal_points:
+                if obj.pointb in external_points:
+                    column = external_points_pos[str(obj.pointb)]
+                elif obj.pointb in internal_points:
+                    column = len(external_points) + internal_points_pos[str(obj.pointb)]
+
+                print("a",internal_points_pos[str(obj.pointa)],column)
+                adjacency[internal_points_pos[str(obj.pointa)],column] += 1
+
+            if obj.pointb in internal_points:
+                if obj.pointa in external_points:
+                    column = external_points_pos[str(obj.pointa)]
+                elif obj.pointa in internal_points:
+                    column = len(external_points) + internal_points_pos[str(obj.pointa)]
+
+                print("b",internal_points_pos[str(obj.pointa)],column)
+                adjacency[internal_points_pos[str(obj.pointb)],column] += 1
+
+        rows = tuple([tuple(adjacency[ii,:]) for ii in range(len(adjacency[:,0]))])
+
+        return rows
+
+
+    @staticmethod
     def wick_contration(corr):
 
         diagram = Diagram(poly.Coef(1).term().expr(),poly.Coef(1).term().expr())
@@ -198,6 +278,7 @@ class Diagram:#(poly.termExpr):
                         equal_fields.append(jj)
                         skip_fields.append(jj)
 
+                #TODO: separate compute wick_contractions separately. If first one is 0, do not compute the second. This will save time (?)
                 diagram += len(equal_fields)*Diagram.wick_contration([corr[0],corr[ii]])*Diagram.wick_contration(np.append(corr[1:ii],corr[ii+1:]))
 
 
@@ -256,6 +337,7 @@ class Diagram:#(poly.termExpr):
         self.expr = expr
         self.propagators = propagators
         self.string = str(propagators)
+        self.adjacency = None
 
     def __mul__(self,other):
         newdiagram = copy.deepcopy(self)
