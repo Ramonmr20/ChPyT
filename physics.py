@@ -151,7 +151,7 @@ class Diagram:#(poly.termExpr):
         return factor, corr
 
     @staticmethod
-    def check_amputated(diagram,external_points=None,internal_points=None):
+    def check_amputation(diagram,external_points=None,internal_points=None):
 
         if not external_points or not internal_points:
             if not diagram.adjacency:
@@ -172,7 +172,6 @@ class Diagram:#(poly.termExpr):
                 amputated = False
 
         return amputated
-
 
 
     @staticmethod
@@ -325,6 +324,9 @@ class Diagram:#(poly.termExpr):
 
         newfactor, newfields = Diagram._divide_factor_corr(corrterm)
 
+        external_points = [field.point for field in newfields]
+        internal_points = []
+
         prefactor *= newfactor
         fields = np.append(fields,newfields)
 
@@ -334,6 +336,7 @@ class Diagram:#(poly.termExpr):
         int_point = 1
         for operator in operatorlist:
             internal_point = poly.Symbol("int"+str(int_point))
+            internal_points = np.append(internal_points,internal_point)
 
             if isinstance(operator,poly.extExpr):
                 if len(operator.terms)==1:
@@ -352,7 +355,15 @@ class Diagram:#(poly.termExpr):
 
             int_point += 1
 
-        print(Diagram.wick_contration(fields))
+        diagrams = Diagram.wick_contration(fields)
+        conn_diagrams = diagExpr([])
+        for diagram in diagrams.terms:
+            if Diagram.check_disconnected(diagram):
+                diagram.adjacency = Diagram.gen_adjacency(diagram,external_points,internal_points)
+                if Diagram.check_amputation(diagram):
+                    conn_diagrams.terms = np.append(conn_diagrams.terms,diagram)
+
+        return conn_diagrams
 
     def __init__(self,expr,propagators):
         self.expr = expr
