@@ -1,0 +1,8 @@
+pi = u"\u03C0"
+rho = u"\u03C1"
+phi = u"\u03C6"
+omega = u"\u03C9"
+beta = u"\u03B2"
+eta = u"\u03B7"
+mu = u"\u03BC"
+nu = u"\u03BD"
