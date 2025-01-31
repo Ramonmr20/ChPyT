@@ -150,6 +150,30 @@ class Diagram:#(poly.termExpr):
 
         return factor, corr
 
+    @staticmethod
+    def check_amputated(diagram,external_points=None,internal_points=None):
+
+        if not external_points or not internal_points:
+            if not diagram.adjacency:
+                raise ValueError("Cannot generate adjacency without the external and internal points")
+        else:
+            if not diagram.adjacency:
+                diagram.adjacency = Diagram.gen_adjacency(diagram,external_points,internal_points)
+
+
+        amputated = True
+        for ii in range(len(diagram.adjacency)):
+            internal = diagram.adjacency[ii][:-len(diagram.adjacency)]
+            external = diagram.adjacency[ii][-len(diagram.adjacency):]
+
+            external_noself = [external[jj] for jj in range(len(external)) if jj!=ii]
+
+            if sum(internal)==1 and sum(external_noself)==1:
+                amputated = False
+
+        return amputated
+
+
 
     @staticmethod
     def check_disconnected(diagram):
@@ -204,7 +228,6 @@ class Diagram:#(poly.termExpr):
                 continue
 
             obj = poly.Symbol.get_obj(propagators.keys[ii])
-            print(obj)
             if not isinstance(obj,Propagator) or propagators.body[ii]==0:
                 continue
 
@@ -214,7 +237,6 @@ class Diagram:#(poly.termExpr):
                 elif obj.pointb in internal_points:
                     column = len(external_points) + internal_points_pos[str(obj.pointb)]
 
-                print("a",internal_points_pos[str(obj.pointa)],column)
                 adjacency[internal_points_pos[str(obj.pointa)],column] += 1
 
             if obj.pointb in internal_points:
@@ -223,7 +245,6 @@ class Diagram:#(poly.termExpr):
                 elif obj.pointa in internal_points:
                     column = len(external_points) + internal_points_pos[str(obj.pointa)]
 
-                print("b",internal_points_pos[str(obj.pointa)],column)
                 adjacency[internal_points_pos[str(obj.pointb)],column] += 1
 
         rows = tuple([tuple(adjacency[ii,:]) for ii in range(len(adjacency[:,0]))])
